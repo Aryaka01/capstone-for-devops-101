@@ -1,0 +1,161 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Docker Hub credentials (configure in Jenkins)
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
+        DOCKER_IMAGE_NAME = 'your-dockerhub-username/task-manager'
+        
+        // Kubernetes configuration
+        KUBECONFIG_CREDENTIALS_ID = 'kubeconfig-credentials'
+        
+        // Git configuration
+        GIT_REPO = 'https://github.com/your-username/devops-simple-capstone.git'
+        
+        // Version tags
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        LATEST_TAG = 'latest'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo '📥 Checking out code from repository...'
+                git branch: 'main', url: "${GIT_REPO}"
+            }
+        }
+        
+        stage('Build Application') {
+            steps {
+                echo '🔨 Building Node.js application...'
+                dir('app') {
+                    sh 'npm install'
+                    sh 'npm test || true'
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                echo '🐳 Building Docker image...'
+                script {
+                    dir('app') {
+                        docker.build("${DOCKER_IMAGE_NAME}:${IMAGE_TAG}", "-f ../docker/Dockerfile .")
+                        docker.build("${DOCKER_IMAGE_NAME}:${LATEST_TAG}", "-f ../docker/Dockerfile .")
+                    }
+                }
+            }
+        }
+        
+        stage('Test Docker Image') {
+            steps {
+                echo '🧪 Testing Docker image...'
+                script {
+                    sh """
+                        docker run -d --name test-container -p 3001:3000 ${DOCKER_IMAGE_NAME}:${IMAGE_TAG}
+                        sleep 10
+                        curl -f http://localhost:3001/health || exit 1
+                        docker stop test-container
+                        docker rm test-container
+                    """
+                }
+            }
+        }
+        
+        stage('Push to Docker Hub') {
+            steps {
+                echo '📤 Pushing Docker image to registry...'
+                script {
+                    docker.withRegistry("https://${DOCKER_REGISTRY}", "${DOCKER_CREDENTIALS_ID}") {
+                        docker.image("${DOCKER_IMAGE_NAME}:${IMAGE_TAG}").push()
+                        docker.image("${DOCKER_IMAGE_NAME}:${LATEST_TAG}").push()
+                    }
+                }
+            }
+        }
+        
+        stage('Update Kubernetes Manifests') {
+            steps {
+                echo '📝 Updating Kubernetes manifests with new image tag...'
+                script {
+                    sh """
+                        sed -i 's|image:.*|image: ${DOCKER_IMAGE_NAME}:${IMAGE_TAG}|g' kubernetes/deployment.yaml
+                        git config user.email "jenkins@example.com"
+                        git config user.name "Jenkins CI"
+                        git add kubernetes/deployment.yaml
+                        git commit -m "Update image tag to ${IMAGE_TAG}" || true
+                    """
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            steps {
+                echo '🚀 Deploying to Kubernetes cluster...'
+                withCredentials([file(credentialsId: "${KUBECONFIG_CREDENTIALS_ID}", variable: 'KUBECONFIG')]) {
+                    sh """
+                        kubectl apply -f kubernetes/deployment.yaml
+                        kubectl apply -f kubernetes/service.yaml
+                        kubectl apply -f kubernetes/ingress.yaml
+                        kubectl rollout status deployment/task-manager
+                    """
+                }
+            }
+        }
+        
+        stage('Verify Deployment') {
+            steps {
+                echo '✅ Verifying deployment...'
+                withCredentials([file(credentialsId: "${KUBECONFIG_CREDENTIALS_ID}", variable: 'KUBECONFIG')]) {
+                    sh """
+                        kubectl get pods -l app=task-manager
+                        kubectl get services task-manager
+                        kubectl get ingress task-manager-ingress
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo '✅ Pipeline completed successfully!'
+            emailext (
+                subject: "✅ Build Success: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
+                body: """
+                    Build ${env.BUILD_NUMBER} completed successfully!
+                    
+                    Job: ${env.JOB_NAME}
+                    Build Number: ${env.BUILD_NUMBER}
+                    Image Tag: ${IMAGE_TAG}
+                    
+                    Check console output at: ${env.BUILD_URL}
+                """,
+                to: 'devops-team@example.com'
+            )
+        }
+        
+        failure {
+            echo '❌ Pipeline failed!'
+            emailext (
+                subject: "❌ Build Failed: ${env.JOB_NAME} - ${env.BUILD_NUMBER}",
+                body: """
+                    Build ${env.BUILD_NUMBER} failed!
+                    
+                    Job: ${env.JOB_NAME}
+                    Build Number: ${env.BUILD_NUMBER}
+                    
+                    Check console output at: ${env.BUILD_URL}
+                """,
+                to: 'devops-team@example.com'
+            )
+        }
+        
+        always {
+            echo '🧹 Cleaning up...'
+            sh 'docker system prune -f || true'
+            cleanWs()
+        }
+    }
+}

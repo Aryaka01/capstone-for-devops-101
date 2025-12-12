@@ -1,0 +1,90 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: task-manager
+  namespace: argocd
+  # Finalizer ensures proper cleanup
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Project the application belongs to
+  project: default
+  
+  # Source repository configuration
+  source:
+    # Git repository URL
+    repoURL: https://github.com/your-username/devops-simple-capstone.git
+    targetRevision: main
+    path: helm/task-manager
+    
+    # Helm specific configuration
+    helm:
+      releaseName: task-manager
+      
+      # Override values from values.yaml
+      values: |
+        replicaCount: 3
+        
+        image:
+          repository: your-dockerhub-username/task-manager
+          tag: latest
+          pullPolicy: Always
+        
+        service:
+          type: ClusterIP
+          port: 80
+        
+        ingress:
+          enabled: true
+          className: nginx
+          hosts:
+            - host: task-manager.local
+              paths:
+                - path: /
+                  pathType: Prefix
+        
+        resources:
+          limits:
+            cpu: 500m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+  
+  # Destination cluster and namespace
+  destination:
+    # Kubernetes cluster (in-cluster means the same cluster where ArgoCD is running)
+    server: https://kubernetes.default.svc
+    namespace: task-manager
+  
+  # Sync policy
+  syncPolicy:
+    # Automated sync configuration
+    automated:
+      # Automatically sync when changes are detected
+      prune: true
+      # Automatically create namespace if it doesn't exist
+      selfHeal: true
+      # Allow empty resources
+      allowEmpty: false
+    
+    # Sync options
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+    
+    # Retry configuration
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Ignore differences in certain fields
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas

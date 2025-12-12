@@ -1,0 +1,13 @@
+apiVersion: v2
+name: task-manager
+description: A Helm chart for Task Manager Application
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - devops
+  - task-manager
+  - nodejs
+maintainers:
+  - name: DevOps Training Program
+    email: devops-training@example.com
