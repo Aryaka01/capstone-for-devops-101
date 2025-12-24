@@ -1,12 +1,7 @@
 pipeline {
-    agent {
-        docker {
-            image 'node:18-alpine'
-            args '-v /var/run/docker.sock:/var/run/docker.sock'
-        }
-    }
+    agent any {
 
-    
+      
     environment {
         // Docker Hub credentials (configure in Jenkins)
         DOCKER_REGISTRY = 'docker.io'
@@ -34,21 +29,26 @@ pipeline {
 
         
         stage('Build Application') {
-            steps {
-                echo '🔨 Building Node.js application...'
+    steps {
+        echo '🔨 Building Node.js application...'
+        script {
+            docker.image('node:18-alpine').inside {
                 dir('app') {
                     sh 'npm install'
                     sh 'npm test || true'
                 }
             }
         }
+    }
+}
+
+      
         
         stage('Build Docker Image') {
             steps {
                 echo '🐳 Building Docker image...'
                 script {
-                    dir('app') {
-                        docker.build("${DOCKER_IMAGE_NAME}:${IMAGE_TAG}", "-f ../docker/Dockerfile .")
+                    dir('app') {                        docker.build("${DOCKER_IMAGE_NAME}:${IMAGE_TAG}", "-f ../docker/Dockerfile .")
                         docker.build("${DOCKER_IMAGE_NAME}:${LATEST_TAG}", "-f ../docker/Dockerfile .")
                     }
                 }
