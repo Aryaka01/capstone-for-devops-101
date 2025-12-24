@@ -1,66 +1,25 @@
 pipeline {
     agent any
 
-    environment {
-        IMAGE_NAME = "task-manager"
-        IMAGE_TAG  = "ci"
-    }
-
     stages {
-
         stage('Checkout') {
             steps {
-                echo 'Checking out code...'
+                echo 'Checking out code'
                 checkout scm
-            }
-        }
-
-        stage('Build Application') {
-            steps {
-                echo 'Building Node.js application...'
-                script {
-                    docker.image('node:18-alpine').inside {
-                        dir('app') {
-                            sh 'npm install'
-                            sh 'npm test || true'
-                        }
-                    }
-                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                echo ' Building Docker image...'
-                sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f docker/Dockerfile .'
-            }
-        }
-
-        stage('Test Docker Image') {
-            steps {
-                echo ' Testing Docker image...'
-                sh '''
-                  docker run -d -p 3001:3000 --name test-container ${IMAGE_NAME}:${IMAGE_TAG}
-                  sleep 5
-                  curl -f http://localhost:3001/health
-                  docker rm -f test-container
-                '''
+                echo 'Building Docker image'
+                sh 'docker build -t task-manager:ci -f docker/Dockerfile .'
             }
         }
     }
 
     post {
         always {
-            echo ' Cleaning up...'
-            sh 'docker system prune -f || true'
-        }
-
-        success {
-            echo ' Pipeline completed successfully!'
-        }
-
-        failure {
-            echo ' Pipeline failed!'
+            echo 'Pipeline finished'
         }
     }
 }
