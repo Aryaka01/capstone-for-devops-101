@@ -20,11 +20,12 @@ pipeline {
     
     stages {
         stage('Checkout') {
-            steps {
-                echo '📥 Checking out code from repository...'
-                git branch: 'main', url: "${GIT_REPO}"
-            }
-        }
+    steps {
+        echo "📥 Checking out code from repository..."
+        checkout scm
+    }
+}
+
         
         stage('Build Application') {
             steps {
